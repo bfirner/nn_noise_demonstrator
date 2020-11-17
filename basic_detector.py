@@ -4,6 +4,7 @@ import argparse
 import numpy
 import os
 import random
+import shutil
 import torch
 
 from PIL import Image
@@ -19,7 +20,6 @@ class Net(torch.nn.Module):
             self.conv_out_size = (self.conv_out_size - 5 + 2 * 2) // 2 + 1
         for _ in range(2):
             self.conv_out_size = (self.conv_out_size - 3 + 2 * 1) // 2 + 1
-        print("Expected out size is {}".format(self.conv_out_size))
         self.net = torch.nn.Sequential(
             torch.nn.Conv2d(in_channels=1, out_channels=6, kernel_size=5, stride=2, padding=2),
             torch.nn.ReLU(),
@@ -93,10 +93,14 @@ inparser.add_argument(
 inparser.add_argument(
     '--size', type=int, default=250,
     help='The size of the training images.')
+inparser.add_argument(
+    '--shape', type=str, default="vertical_line",
+    help='The shape of the target (options: vertical_line).')
 args = inparser.parse_args()
 
 input_size = args.size
 noise = args.noise
+shape = args.shape
 intensity = args.intensity
 blur = getFIRFilterLayer(3)
 net = Net(input_size = input_size).cuda()
@@ -104,7 +108,10 @@ optimizer = torch.optim.Adam(net.parameters())
 loss_fn = torch.nn.L1Loss()
 
 for batch_num in range(2000):
-    batch, labels = getLineData(input_size, noise, blur, intensity, batch_size=32)
+    if "vertical_line" == shape:
+        batch, labels = getLineData(input_size, noise, blur, intensity, batch_size=32)
+    else:
+        raise RuntimeError(f"Shape {shape} is not supported.")
     optimizer.zero_grad()
     out = net.forward(batch)
     loss = loss_fn(out, labels)
@@ -115,7 +122,10 @@ for batch_num in range(2000):
     optimizer.step()
 
 # TODO FIXME Also lower the signal strength so that it moves closer to the noise floor
-outpath = f'vertical_line_{intensity}_intensity_{noise}_noise_blur'
+outpath = f'{shape}_{intensity}_intensity_{noise}_noise_blur'
+# Remove previous results if they exist
+if os.path.isdir(outpath):
+    shutil.rmtree(outpath)
 os.mkdir(outpath)
 net.eval()
 batch, labels = getLineData(input_size, noise, blur, intensity, batch_size=1000)
